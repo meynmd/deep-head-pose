@@ -18,18 +18,16 @@ import datasets, hopenet, utils
 def parse_args():
     """Parse input arguments."""
     parser = argparse.ArgumentParser(description='Head pose estimation using the Hopenet network.')
-    parser.add_argument('--gpu', dest='gpu_id', help='GPU device id to use [0]',
-            default=0, type=int)
-    parser.add_argument('--data_dir', dest='data_dir', help='Directory path for data.',
-          default='', type=str)
+    parser.add_argument('--gpu', dest='gpu_id', help='GPU device id to use [0]', default=0, type=int)
+    parser.add_argument('--data_dir', dest='data_dir', help='Directory path for data.', default='', type=str)
     parser.add_argument('--filename_list', dest='filename_list', help='Path to text file containing relative paths for every example.',
-          default='', type=str)
+                        default='', type=str)
     parser.add_argument('--snapshot', dest='snapshot', help='Name of model snapshot.',
-          default='', type=str)
+                        default='', type=str)
     parser.add_argument('--batch_size', dest='batch_size', help='Batch size.',
-          default=1, type=int)
+                         default=1, type=int)
     parser.add_argument('--save_viz', dest='save_viz', help='Save images with pose cube.',
-          default=False, type=bool)
+                         default=False, type=bool)
     parser.add_argument('--dataset', dest='dataset', help='Dataset type.', default='AFLW2000', type=str)
 
     args = parser.parse_args()

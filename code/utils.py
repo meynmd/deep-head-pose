@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-from torch.utils.serialization import load_lua
 import os
 import scipy.io as sio
 import cv2
