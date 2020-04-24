@@ -18,23 +18,34 @@ import datasets, hopenet, utils
 
 from skimage import io
 
-import torch_detect.janus_rcnn_detect as janus_detector
+import PyTorch_YOLOv3.detector as face_detector
 
-CONF_THRESHOLD = 0.9
+CONF_THRESHOLD = 0.5
 
 def parse_args():
     """Parse input arguments."""
     parser = argparse.ArgumentParser(description='Head pose estimation using the Hopenet network.')
-    parser.add_argument('--gpu', dest='gpu_id', help='GPU device id to use [0]',
-            default=0, type=int)
-    parser.add_argument('--snapshot', dest='snapshot', help='Path of model snapshot.',
-          default='', type=str)
-    parser.add_argument('--face_model', dest='face_model', help='Path of DLIB face detection model.',
-          default='', type=str)
+    parser.add_argument('--gpu', dest='gpu_id', 
+                        help='GPU device id to use [0]',
+                        default=0, type=int)
+    parser.add_argument('--pose_weights', 
+                        dest='pose_weights', 
+                        help='Path of pose estimation model snapshot.',
+                        default='/proj/llfr/staff/mmeyn/model-weights/hopenet/hopenet_robust_alpha1.pkl',
+                        type=str)
+    parser.add_argument('--det_weights', 
+                        dest='det_weights',
+                        help='Path of face detection model weights.',
+                        default='/disk1/mma0448/dev/PyTorch_YOLOv3/weights/yolov3-wider_16000.weights')
+    parser.add_argument('--det_model', 
+                        default='/disk1/mma0448/dev/PyTorch_YOLOv3/config/yolov3-face.cfg')
+    parser.add_argument('--det_meta', 
+                        default='/disk1/mma0448/dev/PyTorch_YOLOv3/data/face.names')
     parser.add_argument('--video', dest='video_path', help='Path of video')
     parser.add_argument('--output_string', dest='output_string', help='String appended to output file')
     parser.add_argument('--n_frames', dest='n_frames', help='Number of frames', type=int)
     parser.add_argument('--fps', dest='fps', help='Frames per second of source video', type=float, default=30.)
+    parser.add_argument('--output_dir')
     args = parser.parse_args()
     return args
 
@@ -45,8 +56,8 @@ if __name__ == '__main__':
 
     batch_size = 1
     gpu = args.gpu_id
-    snapshot_path = args.snapshot
-    out_dir = 'output/video'
+    pose_weights = args.pose_weights
+    out_dir = args.output_dir
     video_path = args.video_path
 
     if not os.path.exists(out_dir):
@@ -60,17 +71,14 @@ if __name__ == '__main__':
 
     # face detection model
     print('Initializing face detector')
-    cnn_face_detector = janus_detector.RcnnDetector(args.face_model, gpu,
-                                                    conf_threshold=0.5,
-                                                    rotate_flags=0,
-                                                    rotate_thresh=0.9,
-                                                    fusion_thresh=0.6,
-                                                    test_scales=800,
-                                                    max_size=2048)
+    cnn_face_detector = face_detector.YoloDetector(args.det_model,
+                                                   args.det_weights, 
+                                                   class_path=args.det_meta,
+                                                   gpu=0)
 
     print ('Loading pose estimator snapshot.')
     # Load snapshot
-    saved_state_dict = torch.load(snapshot_path)
+    saved_state_dict = torch.load(pose_weights)
     model.load_state_dict(saved_state_dict)
 
     print ('Loading data.')
@@ -98,36 +106,34 @@ if __name__ == '__main__':
 
     # Define the codec and create VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'MJPG')
-    out = cv2.VideoWriter('output/video/output-%s.avi' % args.output_string, fourcc, args.fps, (width, height))
+    output_string = args.output_string or os.path.splitext(os.path.split(video_path)[-1])[0]
+    out_filename = 'output-%s.avi' % output_string
+    out_path = os.path.join(out_dir, out_filename)
+    out = cv2.VideoWriter(out_path, fourcc, args.fps, (width, height))
 
-    # # Old cv2
-    # width = int(video.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH))   # float
-    # height = int(video.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT)) # float
-    #
-    # # Define the codec and create VideoWriter object
-    # fourcc = cv2.cv.CV_FOURCC(*'MJPG')
-    # out = cv2.VideoWriter('output/video/output-%s.avi' % args.output_string, fourcc, 30.0, (width, height))
-
-    txt_out = open('output/video/output-%s.txt' % args.output_string, 'w')
+    txt_out = open('{}/output-{}.txt'.format(out_dir, output_string), 'w')
 
     frame_num = 1
+    if args.n_frames is None:
+        n_frames = float('inf')
 
-    while frame_num <= args.n_frames:
+    while frame_num <= n_frames:
         print (frame_num)
-
-        ret,frame = video.read()
-        if ret == False:
+        try:
+            ret,frame = video.read()
+            if ret == False:
+                break
+        except:
             break
-
         cv2_frame = cv2.cvtColor(frame,cv2.COLOR_BGR2RGB)
 
         # Dlib detect
-        dets = cnn_face_detector(cv2_frame, 1)
+        pil_img = Image.fromarray(cv2_frame)
+        dets, _ = cnn_face_detector.detect(pil_img)
 
         for idx, det in enumerate(dets):
             # Get x_min, y_min, x_max, y_max, conf
-            x_min, y_min, w, h, conf = det
-            x_max, y_max = x_min + w, y_min + h
+            x_min, y_min, x_max, y_max, conf, _, _ = det
 
             if conf > CONF_THRESHOLD:
                 bbox_width = abs(x_max - x_min)
